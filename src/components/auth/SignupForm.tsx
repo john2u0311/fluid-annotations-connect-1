@@ -1,9 +1,9 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';      
 import {
   Form,
   FormControl,
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useAuth } from './AuthProvider';
+import { Loader2 } from 'lucide-react';
 
 const signupSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address' }),
@@ -28,7 +29,8 @@ type SignupFormData = z.infer<typeof signupSchema>;
 
 const SignupForm = () => {
   const { signUp } = useAuth();
-  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const form = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
@@ -40,15 +42,26 @@ const SignupForm = () => {
 
   const onSubmit = async (data: SignupFormData) => {
     try {
+      setIsSubmitting(true);
       await signUp(data.email, data.password);
-    } catch (error) {
-      console.error('Signup error:', error);
+    } catch (error: any) {
+      form.setError('root', {
+        type: 'manual',
+        message: error.message || 'Failed to create account'
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {form.formState.errors.root && (
+          <div className="text-sm font-medium text-destructive">
+            {form.formState.errors.root.message}
+          </div>
+        )}
         <FormField
           control={form.control}
           name="email"
@@ -88,8 +101,19 @@ const SignupForm = () => {
             </FormItem>
           )}
         />
-        <Button type="submit" className="w-full">
-          Sign Up
+        <Button 
+          type="submit" 
+          className="w-full" 
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Creating account...
+            </>
+          ) : (
+            'Sign Up'
+          )}
         </Button>
       </form>
     </Form>

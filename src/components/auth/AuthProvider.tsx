@@ -126,24 +126,62 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const signUp = async (email: string, password: string) => {
     try {
       setIsLoading(true);
+      console.log('Starting signup process...', {
+        url: supabase.supabaseUrl,
+        hasKey: !!supabase.supabaseKey
+      });
+
+      // Test connection before signup
+      const { error: pingError } = await supabase.from('_heartbeat').select('*').limit(1);
+      if (pingError) {
+        console.error('Connection test failed:', pingError);
+        throw new Error('Unable to connect to the server. Please check your internet connection.');
+      }
+
       const { error, data } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth`,
+        }
       });
 
-      if (error) throw error;
-      
+      console.log('Signup response:', { error, data });
+
+      if (error) {
+        console.error('Signup error details:', {
+          message: error.message,
+          status: error.status,
+          name: error.name
+        });
+        throw error;
+      }
+
+      if (data?.user?.identities?.length === 0) {
+        throw new Error('Email already registered');
+      }
+
       toast({
         title: "Account created",
         description: "Please check your email to confirm your account",
       });
-      
+
       console.log('Sign up successful:', data.user?.email);
+      return data;
     } catch (error: any) {
-      console.error('Sign up failed:', error.message);
+      console.error('Sign up failed:', {
+        message: error.message,
+        stack: error.stack,
+        details: error
+      });
+      
+      const errorMessage = error.message === 'Email already registered' 
+        ? 'This email is already registered. Please try signing in instead.'
+        : error.message || "An error occurred during signup";
+
       toast({
         title: "Sign up failed",
-        description: error.message || "Please try again with a different email",
+        description: errorMessage,
         variant: "destructive",
       });
       throw error;
