@@ -4,10 +4,15 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/fluid-annotations-connect-1/',
+  base: './',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    emptyOutDir: true,
+  }
 })
