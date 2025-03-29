@@ -19,6 +19,21 @@ export function truncateString(str: string, maxLength: number): string {
   return str.slice(0, maxLength) + "...";
 }
 
+export function throttle<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let lastCall = 0;
+  
+  return function(...args: Parameters<T>) {
+    const now = Date.now();
+    if (now - lastCall < wait) return;
+    
+    lastCall = now;
+    return func(...args);
+  };
+}
+
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
