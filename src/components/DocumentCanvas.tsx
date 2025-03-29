@@ -1,25 +1,20 @@
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   ZoomIn, ZoomOut, Hand, Edit, Bookmark, 
-  Link as LinkIcon, ArrowLeft, ArrowRight
+  Link as LinkIcon, ArrowLeft, ArrowRight,
+  Undo, Redo, Save, Download
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import ErrorBoundary from '@/components/ui/error-boundary';
+import { Loading } from '@/components/ui/loading';
+import { useUndoRedo } from '@/contexts/UndoRedoContext';
+import { throttle } from '@/lib/utils';
 
-interface AnnotationProps {
-  id: string;
-  x: number;
-  y: number;
-  content: string;
-  color?: string;
-  isSelected?: boolean;
-  onSelect?: (id: string) => void;
-  onMove?: (id: string, newX: number, newY: number) => void;
-}
-
-const Annotation = ({ 
+// Memoized Annotation component to prevent unnecessary re-renders
+const Annotation = memo(({ 
   id, 
   content, 
   x, 
@@ -94,27 +89,36 @@ const Annotation = ({
         zIndex: isSelected ? 50 : 10
       }}
       onMouseDown={handleMouseDown}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
+      aria-label={`Annotation: ${content.substring(0, 20)}${content.length > 20 ? '...' : ''}`}
     >
       <div className="text-sm">{content}</div>
     </div>
   );
-};
+});
 
-interface DocumentHighlightProps {
-  content: string;
-  onClick: () => void;
-}
+Annotation.displayName = 'Annotation';
 
-const DocumentHighlight = ({ content, onClick }: DocumentHighlightProps) => (
+// Document highlight component
+const DocumentHighlight = memo(({ content, onClick }: DocumentHighlightProps) => (
   <span 
     className="bg-yellow-200 cursor-pointer hover:bg-yellow-300 transition-colors" 
     onClick={onClick}
+    role="button"
+    tabIndex={0}
+    aria-label={`Highlight: ${content}`}
+    onKeyDown={(e) => e.key === 'Enter' && onClick()}
   >
     {content}
   </span>
-);
+));
 
-const DocumentPage = () => {
+DocumentHighlight.displayName = 'DocumentHighlight';
+
+// Memoized document page to prevent unnecessary re-renders
+const DocumentPage = memo(() => {
   return (
     <div className="bg-white rounded-md p-8 shadow-md text-gray-800">
       <h1 className="text-2xl font-bold mb-4">Project Proposal</h1>
@@ -153,9 +157,32 @@ const DocumentPage = () => {
       </p>
     </div>
   );
-};
+});
 
-const DocumentCanvas = () => {
+DocumentPage.displayName = 'DocumentPage';
+
+interface AnnotationProps {
+  id: string;
+  x: number;
+  y: number;
+  content: string;
+  color?: string;
+  isSelected?: boolean;
+  onSelect?: (id: string) => void;
+  onMove?: (id: string, newX: number, newY: number) => void;
+}
+
+interface DocumentHighlightProps {
+  content: string;
+  onClick: () => void;
+}
+
+interface DocumentCanvasProps {
+  documentId?: string;
+  isReadOnly?: boolean;
+}
+
+const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps) => {
   const [annotations, setAnnotations] = useState<AnnotationProps[]>([
     { 
       id: '1', 
@@ -176,23 +203,37 @@ const DocumentCanvas = () => {
   const [zoom, setZoom] = useState<number>(100);
   const [tool, setTool] = useState<'pan' | 'annotate' | 'highlight' | 'link'>('pan');
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const totalPages = 12;
   const canvasRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const undoRedoContext = useUndoRedo<AnnotationProps[]>();
+
+  // Store annotations in undo/redo context when they change
+  useEffect(() => {
+    undoRedoContext.set(annotations);
+  }, [annotations, undoRedoContext]);
+
+  // Synchronize with undo/redo context
+  useEffect(() => {
+    if (undoRedoContext.state.present !== annotations) {
+      setAnnotations(undoRedoContext.state.present);
+    }
+  }, [undoRedoContext.state.present, annotations]);
 
   const handleAnnotationSelect = (id: string) => {
     setSelectedAnnotation(id);
   };
 
-  const handleAnnotationMove = (id: string, newX: number, newY: number) => {
+  const handleAnnotationMove = useCallback((id: string, newX: number, newY: number) => {
     setAnnotations(prevAnnotations => 
       prevAnnotations.map(anno => 
         anno.id === id ? { ...anno, x: newX, y: newY } : anno
       )
     );
-  };
+  }, []);
 
-  const handleCanvasClick = (e: React.MouseEvent) => {
+  const handleCanvasClick = useCallback((e: React.MouseEvent) => {
     if (tool === 'annotate' && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -214,27 +255,64 @@ const DocumentCanvas = () => {
         description: "Click to edit the annotation content",
       });
     }
-  };
+  }, [tool, toast]);
 
-  const changePage = (direction: 'next' | 'prev') => {
+  const changePage = useCallback((direction: 'next' | 'prev') => {
     if (direction === 'next' && currentPage < totalPages) {
       setCurrentPage(prev => prev + 1);
+      setSelectedAnnotation(null);
     } else if (direction === 'prev' && currentPage > 1) {
       setCurrentPage(prev => prev - 1);
+      setSelectedAnnotation(null);
     }
-  };
+  }, [currentPage, totalPages]);
 
-  const zoomIn = () => {
+  const zoomIn = useCallback(throttle(() => {
     if (zoom < 200) {
       setZoom(prev => prev + 10);
     }
-  };
+  }, 100), [zoom]);
 
-  const zoomOut = () => {
+  const zoomOut = useCallback(throttle(() => {
     if (zoom > 50) {
       setZoom(prev => prev - 10);
     }
+  }, 100), [zoom]);
+
+  const handleUndoRedo = (action: 'undo' | 'redo') => {
+    if (action === 'undo' && undoRedoContext.canUndo) {
+      undoRedoContext.undo();
+    } else if (action === 'redo' && undoRedoContext.canRedo) {
+      undoRedoContext.redo();
+    }
   };
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Handle keyboard shortcuts
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndoRedo('undo');
+      } else if ((e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleUndoRedo('redo');
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        zoomIn();
+      } else if (e.key === '-') {
+        e.preventDefault();
+        zoomOut();
+      }
+    }
+  }, [handleUndoRedo, zoomIn, zoomOut]);
+
+  useEffect(() => {
+    // Add keyboard shortcut listeners
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleKeyDown]);
 
   useEffect(() => {
     // Reset selected annotation when tool changes
@@ -243,133 +321,213 @@ const DocumentCanvas = () => {
     }
   }, [tool]);
 
-  return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden">
-      <div className="bg-muted py-1 px-3 border-b flex items-center justify-between">
-        <div className="flex items-center space-x-1">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8"
-            onClick={() => changePage('prev')}
-            disabled={currentPage === 1}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8"
-            onClick={() => changePage('next')}
-            disabled={currentPage === totalPages}
-          >
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-          <span className="text-sm text-muted-foreground mx-2">Page {currentPage} of {totalPages}</span>
-        </div>
-        
-        <div className="flex items-center space-x-1">
-          <Button 
-            variant={tool === 'pan' ? "secondary" : "ghost"} 
-            size="sm" 
-            className="h-8"
-            onClick={() => setTool('pan')}
-          >
-            <Hand className="h-4 w-4 mr-2" />
-            Pan
-          </Button>
-          <Button 
-            variant={tool === 'annotate' ? "secondary" : "ghost"} 
-            size="sm" 
-            className="h-8"
-            onClick={() => setTool('annotate')}
-          >
-            <Edit className="h-4 w-4 mr-2" />
-            Annotate
-          </Button>
-          <Button 
-            variant={tool === 'highlight' ? "secondary" : "ghost"} 
-            size="sm" 
-            className="h-8"
-            onClick={() => setTool('highlight')}
-          >
-            <Bookmark className="h-4 w-4 mr-2" />
-            Highlight
-          </Button>
-          <Button 
-            variant={tool === 'link' ? "secondary" : "ghost"} 
-            size="sm" 
-            className="h-8"
-            onClick={() => setTool('link')}
-          >
-            <LinkIcon className="h-4 w-4 mr-2" />
-            Connect
-          </Button>
-        </div>
-        
-        <div className="flex items-center space-x-1">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8"
-            onClick={zoomOut}
-            disabled={zoom <= 50}
-          >
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <span className="text-sm mx-1">{zoom}%</span>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8"
-            onClick={zoomIn}
-            disabled={zoom >= 200}
-          >
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+  // Simulate loading document
+  useEffect(() => {
+    if (documentId) {
+      setIsLoading(true);
+      // Simulated loading time
+      const timer = setTimeout(() => {
+        setIsLoading(false);
+      }, 1200);
       
-      <div className="flex-1 relative overflow-hidden">
-        <ScrollArea className="h-full">
-          <div 
-            ref={canvasRef}
-            className="min-h-full w-full p-8 relative"
-            onClick={handleCanvasClick}
-            style={{ 
-              cursor: tool === 'annotate' ? 'crosshair' : tool === 'pan' ? 'grab' : 'default',
-              transform: `scale(${zoom / 100})`,
-              transformOrigin: 'top left',
-              transition: 'transform 0.2s ease-out'
-            }}
-          >
-            <div className="mx-auto max-w-3xl">
-              <DocumentPage />
-            </div>
-            
-            {annotations.map((annotation) => (
-              <Annotation 
-                key={annotation.id} 
-                {...annotation} 
-                isSelected={selectedAnnotation === annotation.id}
-                onSelect={handleAnnotationSelect}
-                onMove={handleAnnotationMove}
-              />
-            ))}
-            
-            <svg className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
-              <path 
-                d="M580,160 C600,180 620,280 650,320" 
-                fill="none"
-                stroke="rgba(155, 135, 245, 0.6)"
-                strokeWidth="2"
-                strokeDasharray="5,5"
-              />
-            </svg>
-          </div>
-        </ScrollArea>
+      return () => clearTimeout(timer);
+    }
+  }, [documentId]);
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loading text="Loading document..." size="lg" />
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <div className="flex-1 flex flex-col h-full overflow-hidden">
+        <div className="bg-muted py-1 px-3 border-b flex items-center justify-between">
+          <div className="flex items-center space-x-1">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={() => changePage('prev')}
+              disabled={currentPage === 1}
+              aria-label="Previous page"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={() => changePage('next')}
+              disabled={currentPage === totalPages}
+              aria-label="Next page"
+            >
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground mx-2">Page {currentPage} of {totalPages}</span>
+          </div>
+          
+          {!isReadOnly && (
+            <div className="flex items-center space-x-1">
+              <Button 
+                variant={tool === 'pan' ? "secondary" : "ghost"} 
+                size="sm" 
+                className="h-8"
+                onClick={() => setTool('pan')}
+                aria-pressed={tool === 'pan'}
+                aria-label="Pan tool"
+              >
+                <Hand className="h-4 w-4 mr-2" />
+                Pan
+              </Button>
+              <Button 
+                variant={tool === 'annotate' ? "secondary" : "ghost"} 
+                size="sm" 
+                className="h-8"
+                onClick={() => setTool('annotate')}
+                aria-pressed={tool === 'annotate'}
+                aria-label="Annotate tool"
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Annotate
+              </Button>
+              <Button 
+                variant={tool === 'highlight' ? "secondary" : "ghost"} 
+                size="sm" 
+                className="h-8"
+                onClick={() => setTool('highlight')}
+                aria-pressed={tool === 'highlight'}
+                aria-label="Highlight tool"
+              >
+                <Bookmark className="h-4 w-4 mr-2" />
+                Highlight
+              </Button>
+              <Button 
+                variant={tool === 'link' ? "secondary" : "ghost"} 
+                size="sm" 
+                className="h-8"
+                onClick={() => setTool('link')}
+                aria-pressed={tool === 'link'}
+                aria-label="Connect tool"
+              >
+                <LinkIcon className="h-4 w-4 mr-2" />
+                Connect
+              </Button>
+            </div>
+          )}
+          
+          <div className="flex items-center space-x-1">
+            {!isReadOnly && (
+              <>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8"
+                  onClick={() => handleUndoRedo('undo')}
+                  disabled={!undoRedoContext.canUndo}
+                  aria-label="Undo"
+                >
+                  <Undo className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8"
+                  onClick={() => handleUndoRedo('redo')}
+                  disabled={!undoRedoContext.canRedo}
+                  aria-label="Redo"
+                >
+                  <Redo className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={zoomOut}
+              disabled={zoom <= 50}
+              aria-label="Zoom out"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <span className="text-sm mx-1">{zoom}%</span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={zoomIn}
+              disabled={zoom >= 200}
+              aria-label="Zoom in"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 ml-2"
+              aria-label="Save document"
+            >
+              <Save className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              aria-label="Download document"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        
+        <div className="flex-1 relative overflow-hidden">
+          <ScrollArea className="h-full">
+            <div 
+              ref={canvasRef}
+              className="min-h-full w-full p-8 relative"
+              onClick={handleCanvasClick}
+              style={{ 
+                cursor: tool === 'annotate' ? 'crosshair' : tool === 'pan' ? 'grab' : 'default',
+                transform: `scale(${zoom / 100})`,
+                transformOrigin: 'top left',
+                transition: 'transform 0.2s ease-out'
+              }}
+              role="region"
+              aria-label="Document canvas"
+              tabIndex={0}
+            >
+              <div className="mx-auto max-w-3xl">
+                <DocumentPage />
+              </div>
+              
+              {annotations.map((annotation) => (
+                <Annotation 
+                  key={annotation.id} 
+                  {...annotation} 
+                  isSelected={selectedAnnotation === annotation.id}
+                  onSelect={handleAnnotationSelect}
+                  onMove={handleAnnotationMove}
+                />
+              ))}
+              
+              <svg className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
+                <path 
+                  d="M580,160 C600,180 620,280 650,320" 
+                  fill="none"
+                  stroke="rgba(155, 135, 245, 0.6)"
+                  strokeWidth="2"
+                  strokeDasharray="5,5"
+                />
+              </svg>
+            </div>
+          </ScrollArea>
+        </div>
+      </div>
+    </ErrorBoundary>
   );
 };
 

@@ -1,13 +1,15 @@
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { bytesToSize } from '@/lib/utils';
 
 interface UploadOptions {
   workspaceId?: string;
   onSuccess?: (data: UploadResult) => void;
   onError?: (error: Error) => void;
+  onProgress?: (progress: number) => void;
 }
 
 export interface UploadResult {
@@ -20,13 +22,47 @@ export interface UploadResult {
   workspaceId?: string;
 }
 
+// List of allowed file types
+const ALLOWED_FILE_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+];
+
+// Maximum file size: 25MB
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
+
 export function useDocumentUpload() {
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const { toast } = useToast();
   const { user } = useAuth();
 
-  const uploadDocument = async (file: File, options?: UploadOptions) => {
+  // Validate file before upload
+  const validateFile = (file: File): { valid: boolean; error?: string } => {
+    // Check if file type is allowed
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      return {
+        valid: false,
+        error: `Invalid file type. Allowed types: PDF, JPEG, PNG, GIF, DOC, DOCX`
+      };
+    }
+    
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
+      return {
+        valid: false,
+        error: `File is too large. Maximum size is ${bytesToSize(MAX_FILE_SIZE)}`
+      };
+    }
+    
+    return { valid: true };
+  };
+
+  const uploadDocument = useCallback(async (file: File, options?: UploadOptions) => {
     if (!user) {
       toast({
         title: "Authentication required",
@@ -45,6 +81,17 @@ export function useDocumentUpload() {
       return null;
     }
 
+    // Validate file before uploading
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      toast({
+        title: "Invalid file",
+        description: validation.error,
+        variant: "destructive"
+      });
+      return null;
+    }
+
     try {
       setIsUploading(true);
       setProgress(0);
@@ -54,6 +101,16 @@ export function useDocumentUpload() {
       const fileName = `${Date.now()}-${file.name}`;
       const filePath = `${user.id}/${fileName}`;
 
+      // Track upload progress (manual simulation since Supabase storage doesn't support progress tracking yet)
+      let uploadProgress = 0;
+      const progressInterval = setInterval(() => {
+        if (uploadProgress < 90) {
+          uploadProgress += 5;
+          setProgress(uploadProgress);
+          options?.onProgress?.(uploadProgress);
+        }
+      }, 300);
+
       // Upload the file to Supabase Storage
       const { error: uploadError, data } = await supabase.storage
         .from('documents')
@@ -62,10 +119,13 @@ export function useDocumentUpload() {
           upsert: false
         });
 
+      clearInterval(progressInterval);
+      
       if (uploadError) throw uploadError;
 
       // Update progress after upload completes
       setProgress(100);
+      options?.onProgress?.(100);
 
       // Get the public URL for the file
       const { data: { publicUrl } } = supabase.storage
@@ -111,9 +171,14 @@ export function useDocumentUpload() {
       return result;
     } catch (error) {
       console.error('Upload error:', error);
+      
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : "Failed to upload document";
+      
       toast({
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "Failed to upload document",
+        description: errorMessage,
         variant: "destructive"
       });
       
@@ -125,11 +190,12 @@ export function useDocumentUpload() {
     } finally {
       setIsUploading(false);
     }
-  };
+  }, [user, toast]);
 
   return {
     uploadDocument,
     isUploading,
-    progress
+    progress,
+    validateFile
   };
 }

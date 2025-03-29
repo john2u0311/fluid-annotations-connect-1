@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 import { useToast } from '@/hooks/use-toast';
@@ -12,9 +12,15 @@ type AuthContextType = {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshSession: () => Promise<void>;
 };
 
+// Create a context with a default value
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Security constants
+const SESSION_EXPIRY_BUFFER = 5 * 60 * 1000; // 5 minutes in milliseconds
+const AUTH_STORAGE_KEY = 'fluid-docs-auth-state'; // Key for localStorage
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -23,6 +29,39 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Function to refresh the session
+  const refreshSession = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error) throw error;
+      setSession(data.session);
+      setUser(data.session?.user ?? null);
+    } catch (error) {
+      console.error('Failed to refresh session:', error);
+      // If refresh fails, clear the session
+      setSession(null);
+      setUser(null);
+    }
+  }, []);
+
+  // Setup session refresh timer when session changes
+  useEffect(() => {
+    if (session?.expires_at) {
+      const expiresAt = session.expires_at * 1000; // Convert to milliseconds
+      const timeUntilExpiry = expiresAt - Date.now() - SESSION_EXPIRY_BUFFER;
+      
+      if (timeUntilExpiry <= 0) {
+        // Session is already expired or about to expire, refresh now
+        refreshSession();
+        return;
+      }
+      
+      // Set timer to refresh before expiry
+      const refreshTimer = setTimeout(refreshSession, timeUntilExpiry);
+      return () => clearTimeout(refreshTimer);
+    }
+  }, [session, refreshSession]);
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -57,6 +96,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signIn = async (email: string, password: string) => {
     try {
+      setIsLoading(true);
       const { error, data } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -78,11 +118,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         variant: "destructive",
       });
       throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const signUp = async (email: string, password: string) => {
     try {
+      setIsLoading(true);
       const { error, data } = await supabase.auth.signUp({
         email,
         password,
@@ -104,13 +147,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         variant: "destructive",
       });
       throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const signOut = async () => {
     try {
+      setIsLoading(true);
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      
+      // Clear any locally stored data
+      localStorage.removeItem(AUTH_STORAGE_KEY);
       
       toast({
         title: "Signed out",
@@ -125,11 +174,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         description: error.message || "An error occurred during sign out",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  const authValue = {
+    user,
+    session,
+    isLoading,
+    signIn,
+    signUp,
+    signOut,
+    refreshSession
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, isLoading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={authValue}>
       {children}
     </AuthContext.Provider>
   );
