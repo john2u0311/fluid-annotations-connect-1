@@ -26,13 +26,11 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/configure-pages@v3
-      - shell: bash
+      - name: Upload artifact
         run: |
           cd dist
-          tar -czf ../artifact.tar.gz .
-      - uses: actions/upload-artifact@v3
+          zip -r ../github-pages.zip .
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v2
         with:
-          name: github-pages
-          path: artifact.tar.gz
-      - uses: actions/deploy-pages@v2
-        id: deployment
+          artifact_name: github-pages.zip
