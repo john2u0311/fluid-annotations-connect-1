@@ -4,7 +4,7 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/fluid-annotations-connect-1/',
+  base: '',  // Changed base URL
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
