@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 import { useToast } from '@/hooks/use-toast';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 type AuthContextType = {
   user: User | null;
@@ -22,6 +22,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -33,7 +34,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Use setTimeout to avoid potential deadlocks when fetching additional data
       if (currentSession?.user && event === 'SIGNED_IN') {
         setTimeout(() => {
-          navigate('/');
+          // Check if we're not already on the workspaces page to prevent navigation loops
+          if (location.pathname !== '/workspaces' && location.pathname !== '/') {
+            navigate('/workspaces');
+          }
         }, 0);
       }
     });
@@ -49,7 +53,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, [navigate, location.pathname]);
 
   const signIn = async (email: string, password: string) => {
     try {

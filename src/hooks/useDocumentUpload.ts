@@ -59,14 +59,13 @@ export function useDocumentUpload() {
         .from('documents')
         .upload(filePath, file, {
           cacheControl: '3600',
-          upsert: false,
-          onUploadProgress: (event) => {
-            const percent = event.loaded / (event.total || 1) * 100;
-            setProgress(Math.round(percent));
-          }
+          upsert: false
         });
 
       if (uploadError) throw uploadError;
+
+      // Update progress after upload completes
+      setProgress(100);
 
       // Get the public URL for the file
       const { data: { publicUrl } } = supabase.storage
