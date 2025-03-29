@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -13,7 +12,6 @@ import { Loading } from '@/components/ui/loading';
 import { useUndoRedo } from '@/contexts/UndoRedoContext';
 import { throttle } from '@/lib/utils';
 
-// Memoized Annotation component to prevent unnecessary re-renders
 const Annotation = memo(({ 
   id, 
   content, 
@@ -29,7 +27,6 @@ const Annotation = memo(({
   const [position, setPosition] = useState({ x, y });
   const annotationRef = useRef<HTMLDivElement>(null);
 
-  // Update position when props change
   useEffect(() => {
     setPosition({ x, y });
   }, [x, y]);
@@ -101,7 +98,6 @@ const Annotation = memo(({
 
 Annotation.displayName = 'Annotation';
 
-// Document highlight component
 const DocumentHighlight = memo(({ content, onClick }: DocumentHighlightProps) => (
   <span 
     className="bg-yellow-200 cursor-pointer hover:bg-yellow-300 transition-colors" 
@@ -117,7 +113,6 @@ const DocumentHighlight = memo(({ content, onClick }: DocumentHighlightProps) =>
 
 DocumentHighlight.displayName = 'DocumentHighlight';
 
-// Memoized document page to prevent unnecessary re-renders
 const DocumentPage = memo(() => {
   return (
     <div className="bg-white rounded-md p-8 shadow-md text-gray-800">
@@ -183,22 +178,6 @@ interface DocumentCanvasProps {
 }
 
 const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps) => {
-  const [annotations, setAnnotations] = useState<AnnotationProps[]>([
-    { 
-      id: '1', 
-      x: 550, 
-      y: 120, 
-      content: 'This is a key point - 42% reduction is significant and exceeds our target objective.',
-      color: 'purple' 
-    },
-    { 
-      id: '2', 
-      x: 650, 
-      y: 320, 
-      content: 'Check if we can implement this in phases to minimize disruption.',
-      color: 'blue' 
-    }
-  ]);
   const [selectedAnnotation, setSelectedAnnotation] = useState<string | null>(null);
   const [zoom, setZoom] = useState<number>(100);
   const [tool, setTool] = useState<'pan' | 'annotate' | 'highlight' | 'link'>('pan');
@@ -207,37 +186,26 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
   const totalPages = 12;
   const canvasRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  
   const undoRedoContext = useUndoRedo<AnnotationProps[]>();
-
-  // Store annotations in undo/redo context when they change
-  useEffect(() => {
-    if (annotations && Array.isArray(annotations)) {
-      undoRedoContext.set(annotations);
-    }
-  }, [annotations, undoRedoContext]);
-
-  // Synchronize with undo/redo context
-  useEffect(() => {
-    const presentState = undoRedoContext.state.present;
-    if (presentState && Array.isArray(presentState) && presentState !== annotations) {
-      setAnnotations(presentState);
-    }
-  }, [undoRedoContext.state.present, annotations]);
+  
+  const annotations = undoRedoContext.state.present || [];
 
   const handleAnnotationSelect = (id: string) => {
     setSelectedAnnotation(id);
   };
 
   const handleAnnotationMove = useCallback((id: string, newX: number, newY: number) => {
-    setAnnotations(prevAnnotations => {
-      if (!prevAnnotations || !Array.isArray(prevAnnotations)) {
-        return [];
-      }
-      return prevAnnotations.map(anno => 
-        anno.id === id ? { ...anno, x: newX, y: newY } : anno
-      );
-    });
-  }, []);
+    const currentAnnotations = Array.isArray(undoRedoContext.state.present) 
+      ? [...undoRedoContext.state.present] 
+      : [];
+      
+    const updatedAnnotations = currentAnnotations.map(anno => 
+      anno.id === id ? { ...anno, x: newX, y: newY } : anno
+    );
+    
+    undoRedoContext.set(updatedAnnotations);
+  }, [undoRedoContext]);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
     if (tool === 'annotate' && canvasRef.current) {
@@ -253,12 +221,11 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
         color: 'purple'
       };
       
-      setAnnotations(prev => {
-        if (!prev || !Array.isArray(prev)) {
-          return [newAnnotation];
-        }
-        return [...prev, newAnnotation];
-      });
+      const currentAnnotations = Array.isArray(undoRedoContext.state.present) 
+        ? [...undoRedoContext.state.present] 
+        : [];
+        
+      undoRedoContext.set([...currentAnnotations, newAnnotation]);
       setSelectedAnnotation(newAnnotation.id);
       
       toast({
@@ -266,7 +233,7 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
         description: "Click to edit the annotation content",
       });
     }
-  }, [tool, toast]);
+  }, [tool, toast, undoRedoContext]);
 
   const changePage = useCallback((direction: 'next' | 'prev') => {
     if (direction === 'next' && currentPage < totalPages) {
@@ -299,7 +266,6 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
   };
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Handle keyboard shortcuts
     if (e.ctrlKey || e.metaKey) {
       if (e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -318,7 +284,6 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
   }, [handleUndoRedo, zoomIn, zoomOut]);
 
   useEffect(() => {
-    // Add keyboard shortcut listeners
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -326,17 +291,14 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
   }, [handleKeyDown]);
 
   useEffect(() => {
-    // Reset selected annotation when tool changes
     if (tool !== 'annotate') {
       setSelectedAnnotation(null);
     }
   }, [tool]);
 
-  // Simulate loading document
   useEffect(() => {
     if (documentId) {
       setIsLoading(true);
-      // Simulated loading time
       const timer = setTimeout(() => {
         setIsLoading(false);
       }, 1200);
@@ -353,7 +315,6 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
     );
   }
 
-  // Ensure annotations is always an array
   const safeAnnotations = Array.isArray(annotations) ? annotations : [];
 
   return (
