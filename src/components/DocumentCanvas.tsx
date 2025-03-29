@@ -2,10 +2,9 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Card } from '@/components/ui/card';
 import { 
   ZoomIn, ZoomOut, Hand, Edit, Bookmark, 
-  Link, ArrowLeft, ArrowRight, Plus, Minus 
+  Link as LinkIcon, ArrowLeft, ArrowRight
 } from 'lucide-react';
 
 interface AnnotationProps {
@@ -19,13 +18,12 @@ interface AnnotationProps {
 
 const Annotation = ({ content, x, y, color = 'purple', isSelected = false }: AnnotationProps) => (
   <div 
-    className={`annotation cursor-move absolute animate-scale-in ${
-      isSelected ? 'ring-2 ring-fluid-purple' : ''
+    className={`absolute cursor-move p-3 bg-card border rounded-md shadow-md max-w-[300px] ${
+      isSelected ? 'ring-2 ring-primary' : ''
     }`}
     style={{ 
       left: `${x}px`, 
       top: `${y}px`,
-      maxWidth: '300px',
       borderLeftColor: color === 'purple' ? '#9b87f5' : '#1EAEDB',
       borderLeftWidth: '4px'
     }}
@@ -40,7 +38,10 @@ interface DocumentHighlightProps {
 }
 
 const DocumentHighlight = ({ content, onClick }: DocumentHighlightProps) => (
-  <span className="annotation-highlight" onClick={onClick}>
+  <span 
+    className="bg-yellow-200 cursor-pointer hover:bg-yellow-300 transition-colors" 
+    onClick={onClick}
+  >
     {content}
   </span>
 );
@@ -131,7 +132,7 @@ const DocumentCanvas = () => {
             Highlight
           </Button>
           <Button variant="ghost" size="sm" className="h-8">
-            <Link className="h-4 w-4 mr-2" />
+            <LinkIcon className="h-4 w-4 mr-2" />
             Connect
           </Button>
         </div>
@@ -149,7 +150,7 @@ const DocumentCanvas = () => {
       
       <div className="flex-1 relative overflow-hidden">
         <ScrollArea className="h-full">
-          <div className="min-h-full w-full p-8 canvas-grid">
+          <div className="min-h-full w-full p-8 relative">
             <div className="mx-auto max-w-3xl">
               <DocumentPage />
             </div>
@@ -161,8 +162,9 @@ const DocumentCanvas = () => {
             <svg className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
               <path 
                 d="M580,160 C600,180 620,280 650,320" 
-                className="connection-line" 
-                fill="none" 
+                fill="none"
+                stroke="rgba(155, 135, 245, 0.6)"
+                strokeWidth="2"
                 strokeDasharray="5,5"
               />
             </svg>
