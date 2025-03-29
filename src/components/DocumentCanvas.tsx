@@ -211,13 +211,16 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
 
   // Store annotations in undo/redo context when they change
   useEffect(() => {
-    undoRedoContext.set(annotations);
+    if (annotations && Array.isArray(annotations)) {
+      undoRedoContext.set(annotations);
+    }
   }, [annotations, undoRedoContext]);
 
   // Synchronize with undo/redo context
   useEffect(() => {
-    if (undoRedoContext.state.present !== annotations) {
-      setAnnotations(undoRedoContext.state.present);
+    const presentState = undoRedoContext.state.present;
+    if (presentState && Array.isArray(presentState) && presentState !== annotations) {
+      setAnnotations(presentState);
     }
   }, [undoRedoContext.state.present, annotations]);
 
@@ -226,11 +229,14 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
   };
 
   const handleAnnotationMove = useCallback((id: string, newX: number, newY: number) => {
-    setAnnotations(prevAnnotations => 
-      prevAnnotations.map(anno => 
+    setAnnotations(prevAnnotations => {
+      if (!prevAnnotations || !Array.isArray(prevAnnotations)) {
+        return [];
+      }
+      return prevAnnotations.map(anno => 
         anno.id === id ? { ...anno, x: newX, y: newY } : anno
-      )
-    );
+      );
+    });
   }, []);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
@@ -247,7 +253,12 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
         color: 'purple'
       };
       
-      setAnnotations(prev => [...prev, newAnnotation]);
+      setAnnotations(prev => {
+        if (!prev || !Array.isArray(prev)) {
+          return [newAnnotation];
+        }
+        return [...prev, newAnnotation];
+      });
       setSelectedAnnotation(newAnnotation.id);
       
       toast({
@@ -341,6 +352,9 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
       </div>
     );
   }
+
+  // Ensure annotations is always an array
+  const safeAnnotations = Array.isArray(annotations) ? annotations : [];
 
   return (
     <ErrorBoundary>
@@ -504,7 +518,7 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
                 <DocumentPage />
               </div>
               
-              {annotations.map((annotation) => (
+              {safeAnnotations.map((annotation) => (
                 <Annotation 
                   key={annotation.id} 
                   {...annotation} 
