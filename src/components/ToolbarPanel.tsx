@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  Edit, Bookmark, FileText, Link, Hand, Eraser,
+  Edit, Bookmark, FileText, Link as LinkIcon, Hand, Eraser,
   Plus, Minus, Circle, Square, ArrowRight
 } from 'lucide-react';
+import { useUndoRedo } from '@/contexts/UndoRedoContext';
 
 const colorOptions = [
   { color: '#1EAEDB', name: 'blue' },
@@ -17,10 +18,22 @@ const colorOptions = [
 ];
 
 const ToolbarPanel = () => {
+  const undoRedoContext = useUndoRedo<any[]>();
+  
+  const handleToolChange = (value: string) => {
+    // This is where we would connect to the canvas state
+    // In a more complex app, we would use a global context for this
+    console.log("Tool changed to:", value);
+  };
+
+  const handleColorChange = (color: string) => {
+    console.log("Color changed to:", color);
+  };
+
   return (
     <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10">
       <div className="bg-card rounded-full shadow-lg border px-4 py-1.5 flex items-center space-x-2">
-        <Tabs defaultValue="annotate" className="mr-2">
+        <Tabs defaultValue="annotate" className="mr-2" onValueChange={handleToolChange}>
           <TabsList className="bg-muted/70">
             <TabsTrigger value="select" className="px-3">
               <Hand className="h-4 w-4" />
@@ -35,7 +48,7 @@ const ToolbarPanel = () => {
               <FileText className="h-4 w-4" />
             </TabsTrigger>
             <TabsTrigger value="connect" className="px-3">
-              <Link className="h-4 w-4" />
+              <LinkIcon className="h-4 w-4" />
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -50,6 +63,7 @@ const ToolbarPanel = () => {
               size="icon" 
               className="h-8 w-8 rounded-full"
               style={{ color: opt.color }}
+              onClick={() => handleColorChange(opt.color)}
             >
               <div 
                 className="h-5 w-5 rounded-full border"

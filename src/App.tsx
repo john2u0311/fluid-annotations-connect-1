@@ -6,7 +6,6 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./components/auth/AuthProvider";
-import { UndoRedoProvider } from "./contexts/UndoRedoContext";
 import Index from "./pages/Index";
 import Workspace from "./pages/Workspace";
 import Auth from "./pages/Auth";
@@ -30,44 +29,42 @@ const App = () => (
       <BrowserRouter>
         <TooltipProvider>
           <AuthProvider>
-            <UndoRedoProvider initialState={{}}>
-              <Toaster />
-              <Sonner />
-              <Routes>
-                {/* Public routes */}
-                <Route path="/auth" element={<Auth />} />
-                
-                {/* Protected routes */}
-                <Route
-                  path="/"
-                  element={
-                    <RequireAuth>
-                      <Index />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/workspaces"
-                  element={
-                    <RequireAuth>
-                      <Workspace />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/document/:documentId"
-                  element={
-                    <RequireAuth>
-                      <Index />
-                    </RequireAuth>
-                  }
-                />
-                
-                {/* Redirects and catch-all */}
-                <Route path="/home" element={<Navigate to="/" replace />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </UndoRedoProvider>
+            <Toaster />
+            <Sonner />
+            <Routes>
+              {/* Public routes */}
+              <Route path="/auth" element={<Auth />} />
+              
+              {/* Protected routes */}
+              <Route
+                path="/"
+                element={
+                  <RequireAuth>
+                    <Index />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/workspaces"
+                element={
+                  <RequireAuth>
+                    <Workspace />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/document/:documentId"
+                element={
+                  <RequireAuth>
+                    <Index />
+                  </RequireAuth>
+                }
+              />
+              
+              {/* Redirects and catch-all */}
+              <Route path="/home" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
           </AuthProvider>
         </TooltipProvider>
       </BrowserRouter>

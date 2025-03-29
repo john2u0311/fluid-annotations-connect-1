@@ -27,10 +27,10 @@ const initialAnnotations = [
 
 const Index = () => {
   return (
-    <UndoRedoProvider initialState={initialAnnotations}>
-      <div className="flex flex-col h-screen overflow-hidden bg-background">
-        <Header />
-        
+    <div className="flex flex-col h-screen overflow-hidden bg-background">
+      <Header />
+      
+      <UndoRedoProvider initialState={initialAnnotations}>
         <main className="flex-1 flex overflow-hidden">
           <DocumentSidebar />
           <DocumentCanvas />
@@ -38,8 +38,8 @@ const Index = () => {
         </main>
         
         <ToolbarPanel />
-      </div>
-    </UndoRedoProvider>
+      </UndoRedoProvider>
+    </div>
   );
 };
 

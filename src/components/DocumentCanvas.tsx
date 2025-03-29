@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -189,13 +190,18 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
   
   const undoRedoContext = useUndoRedo<AnnotationProps[]>();
   
-  const annotations = undoRedoContext.state.present || [];
+  // Ensure annotations is always an array
+  const annotations = Array.isArray(undoRedoContext.state.present) 
+    ? undoRedoContext.state.present 
+    : [];
 
   const handleAnnotationSelect = (id: string) => {
     setSelectedAnnotation(id);
   };
 
   const handleAnnotationMove = useCallback((id: string, newX: number, newY: number) => {
+    if (!undoRedoContext.state.present) return;
+    
     const currentAnnotations = Array.isArray(undoRedoContext.state.present) 
       ? [...undoRedoContext.state.present] 
       : [];
@@ -314,8 +320,6 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
       </div>
     );
   }
-
-  const safeAnnotations = Array.isArray(annotations) ? annotations : [];
 
   return (
     <ErrorBoundary>
@@ -479,7 +483,7 @@ const DocumentCanvas = ({ documentId, isReadOnly = false }: DocumentCanvasProps)
                 <DocumentPage />
               </div>
               
-              {safeAnnotations.map((annotation) => (
+              {annotations && annotations.map((annotation) => (
                 <Annotation 
                   key={annotation.id} 
                   {...annotation} 
