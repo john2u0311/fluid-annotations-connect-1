@@ -20,10 +20,17 @@ jobs:
         run: npm install --legacy-peer-deps
         
       - name: Build project
-        run: npm run build
+        run: |
+          npm run build
+          ls -R ./dist
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          
+      - name: Verify deployment files
+        run: |
+          [ -f ./dist/index.html ] || exit 1
+          [ -f ./dist/assets/main-*.js ] || exit 1
           
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
@@ -31,3 +38,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           keep_files: false
+          # Removed cname as it's not needed for project pages
